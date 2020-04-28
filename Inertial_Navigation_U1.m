@@ -1,4 +1,3 @@
-%Yang,Zhonglong 10026966
 %2020.04.28
 clear all
 load('imubsp.mat')
