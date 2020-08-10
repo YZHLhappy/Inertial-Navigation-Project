@@ -1,0 +1,109 @@
+% Use the ex02_task2_matr#.mat“ dataset, which includes 4 timeseries of 1 [Hz] stochastic processes 
+% (a,b,c,d). You need to implement the Allan-deviation algorithm in order to proceed.
+clear all
+load('ex02_task2_matr#.mat')
+% Task 2: Stochastic effect
+%（1）plot the original timeseries as well as the respective temporal
+%differentitation in first and second order
+diff1_a = diff(sim_processes.a);
+diff2_a = diff(sim_processes.a,2);
+diff1_b = diff(sim_processes.b);
+diff2_b = diff(sim_processes.b,2);
+diff1_c = diff(sim_processes.c);
+diff2_c = diff(sim_processes.c,2);
+diff1_d = diff(sim_processes.d);
+diff2_d = diff(sim_processes.d,2);
+figure(1)
+plot(sim_processes.a)
+title("a original timeseries")
+figure(2)
+plot(diff1_a)
+title("a diff1 timeseries")
+figure(3)
+plot(diff2_a)
+title("a diff2 timeseries")
+figure(4)
+plot(sim_processes.b)
+title("b original timeseries")
+figure(5)
+plot(diff1_b)
+title("b diff1 timeseries")
+figure(6)
+plot(diff2_b)
+title("b diff2 timeseries")
+figure(7)
+plot(sim_processes.c)
+title("c original timeseries")
+figure(8)
+plot(diff1_c)
+title("c diff1 timeseries")
+figure(9)
+plot(diff2_c)
+title("c diff2 timeseries")
+figure(10)
+plot(sim_processes.d)
+title("d original timeseries")
+figure(11)
+plot(diff1_d)
+title("d diff1 timeseries")
+figure(12)
+plot(diff2_d)
+title("d diff2 timeseries")
+
+
+%% (2)compute the Allan-Deviation for all processes and display them in a common loglog-plot
+v = 6;
+[O,N] = size(sim_processes.a);
+N_max = fix(N/v);
+tau_0 = 1;
+%a
+a = sim_processes.a;
+[tau_a,theta_sqrt_a,theta_qua_a] = Allan(v,tau_0,a);
+%b
+b = sim_processes.b;
+[tau_b,theta_sqrt_b,theta_qua_b] = Allan(v,tau_0,b);
+%c
+c = sim_processes.c;
+[tau_c,theta_sqrt_c,theta_qua_c] = Allan(v,tau_0,c);
+%d
+d = sim_processes.d;
+[tau_d,theta_sqrt_d,theta_qua_d] = Allan(v,tau_0,d);
+%sum abcd
+sum_abcd = sim_processes.a+sim_processes.b+sim_processes.c+sim_processes.d;
+[tau_sum_abcd,theta_sqrt_sum_abcd,theta_qua_sum_abcd] = Allan(v,tau_0,sum_abcd);
+
+%plot
+figure(13)
+loglog(tau_a,theta_sqrt_a)
+title("a:Allan-Deviation")
+figure(14)
+loglog(tau_b,theta_sqrt_b)
+title("b:Allan-Deviation")
+figure(15)
+loglog(tau_c,theta_sqrt_c)
+title("c:Allan-Deviation")
+figure(16)
+loglog(tau_d,theta_sqrt_d)
+title("d:Allan-Deviation")
+figure(17)
+plot(sum_abcd)
+title("abcd")
+figure(18)
+plot(diff(sum_abcd))
+title("abcd diff1")
+figure(19)
+plot(diff(sum_abcd,2))
+title("abcd diff2")
+figure(20)
+loglog(tau_sum_abcd,theta_sqrt_sum_abcd)
+title("abcd:Allan-Deviation")
+figure(21)
+loglog(tau_a,theta_sqrt_a)
+title("a and b and c and d")
+hold on
+loglog(tau_b,theta_sqrt_b)
+hold on
+loglog(tau_c,theta_sqrt_c)
+hold on
+loglog(tau_d,theta_sqrt_d)
+hold on
