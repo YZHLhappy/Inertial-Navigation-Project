@@ -1,2 +1,2 @@
 # Inertial-Navigation-Ubung
-INERTIAL NAVIGATION homework，惯性导航练习记录
+INERTIAL NAVIGATION exercise work，惯性导航实验记录
