@@ -1,0 +1,33 @@
+%Use the ex02_task1_matr#.mat“ dataset
+% Task 1 - Bias and scale factor estimation: 6 position test
+%Use the ex02_task1_matr#.mat“ dataset
+clear all
+load('ex02_task1_matr#.mat')
+g = 9.811117; omega_e = 7.2921151467*10^-5; Latitude = deg2rad(52.385828);
+fx_up_mean = mean(sixpos.fx_up);
+fy_up_mean = mean(sixpos.fy_up);
+fz_up_mean = mean(sixpos.fz_up);
+f_up_mean = [fx_up_mean;fy_up_mean;fz_up_mean];
+fx_down_mean = mean(sixpos.fx_down);
+fy_down_mean = mean(sixpos.fy_down);
+fz_down_mean = mean(sixpos.fz_down);
+f_down_mean = [fx_down_mean;fy_down_mean;fz_down_mean];
+
+omx_up_mean = mean(sixpos.omx_up);
+omy_up_mean = mean(sixpos.omy_up);
+omz_up_mean = mean(sixpos.omz_up);
+om_up_mean = [omx_up_mean;omy_up_mean;omz_up_mean];
+omx_down_mean = mean(sixpos.omx_down);
+omy_down_mean = mean(sixpos.omy_down);
+omz_down_mean = mean(sixpos.omz_down);
+om_down_mean = [omx_down_mean;omy_down_mean;omz_down_mean];
+
+b_a = (f_up_mean + f_down_mean)/2;
+S_a = (f_down_mean - f_up_mean)/(2*g);
+
+b_g = (om_up_mean + om_down_mean)/2;
+S_g_x = (omx_down_mean - omx_up_mean)/(2*omega_e);
+S_g_y = (omy_down_mean - omy_up_mean)/(2*omega_e);
+S_g_z = (omz_down_mean - omz_up_mean)/(2*omega_e*sin(Latitude));
+S_g = [S_g_x; S_g_y; S_g_z];
+
