@@ -1,0 +1,406 @@
+%% 2020 July Yang 
+%Task 1:
+% a) Define the initial integration constants for velocity and position. Use your static IMU measurement to estimate the Earth rotation rate, g-vector and latitude.
+% b) Proceed with an initial alignment (direct DCM calculation) to estimate the initial integration constant for the orientation
+clear all
+load('ex03_imudata_mtra#.mat')
+format long g
+%Find initial orientation for attitude computation
+%% import the data (timestamp,fx,fy,fz,wx,wy,wz)
+s          = size(imudata.static);
+z          = s(1);
+%import the data (timestamp,fx,fy,fz,wx,wy,wz)
+timestamp  = [];
+f_b_x      = [];
+f_b_y      = [];
+f_b_z      = [];
+w_b_x      = [];
+w_b_y      = [];
+w_b_z      = [];
+for k = 1:z
+    timestamp(k,:) =  imudata.static(k,1);
+    f_b_x(k,:)     =  imudata.static(k,5); %#ok<*SAGROW>
+    f_b_y(k,:)     =  imudata.static(k,6);
+    f_b_z(k,:)     =  imudata.static(k,7);
+    w_b_x(k,:)     =  imudata.static(k,2);
+    w_b_y(k,:)     =  imudata.static(k,3);
+    w_b_z(k,:)     =  imudata.static(k,4);
+end
+f_b_x_mean              = mean(f_b_x(:));
+f_b_y_mean              = mean(f_b_y(:));
+f_b_z_mean              = mean(f_b_z(:));
+w_b_x_mean              = mean(w_b_x(:));
+w_b_y_mean              = mean(w_b_y(:));
+w_b_z_mean              = mean(w_b_z(:));
+w_ib_b                  = [w_b_x_mean;w_b_y_mean;w_b_z_mean];  %w_ib_b =>ib down, b up
+%% g, w_e, w_ie_n
+% g
+g_ib_b                  = sqrt(f_b_x_mean^2 + f_b_y_mean^2 + f_b_z_mean^2);
+% w_e
+w_e                     = sqrt(w_b_x_mean^2+w_b_y_mean^2+w_b_z_mean^2);
+w_deg_h_i               = rad2deg(w_e)*3600;
+%% C_n to b
+roll                    = atan2(-f_b_y_mean,-f_b_z_mean); %roll
+pitch                   = atan(f_b_x_mean/sqrt(f_b_y_mean^2+f_b_z_mean^2)); %pitch
+c_2                     = [cos(pitch) 0 -sin(pitch); 0        1           0     ; sin(pitch)     0        cos(pitch)];
+c_3                     = [    1      0      0     ; 0     cos(roll)   sin(roll);     0      -sin(roll)   cos(roll) ];
+X                       = -w_b_y_mean * cos(roll) + w_b_z_mean*sin(roll);
+Y                       = w_b_x_mean * cos(pitch) + w_b_y_mean * sin(roll) * sin(pitch) + w_b_z_mean * cos(roll) * sin(pitch);
+yaw                     = atan2(X, Y); %yaw   atan(w_b_y_mean/w_b_x_mean)atan2(X, Y) atan(w_b_y_mean/w_b_x_mean)
+c_1                     = [cos(yaw) sin(yaw) 0;-sin(yaw) cos(yaw) 0;0 0 1];
+roll_deg                = rad2deg(roll);
+roll_deg                = rad2deg(pitch);
+yaw_deg                 = rad2deg(yaw);
+%c_n->b
+c_b_n_0                 = c_1'* c_2'* c_3';
+c_n_to_b                = c_b_n_0';
+w_ie_n_task_a           = c_n_to_b\w_ib_b;
+%% Latitude
+latitude_matrix         = w_e\ w_ie_n_task_a;
+latitude                = atan(-latitude_matrix(3) / latitude_matrix(1));
+latitude_deg            = rad2deg(latitude);
+%% Proceed with an initial alignment (direct DCM calculation) to estimate the initial integration constant for the orientation
+f_xyz_ib_b              = [f_b_x_mean; f_b_y_mean; f_b_z_mean];
+w_xyz_ib_b              = [w_b_x_mean;w_b_y_mean;w_b_z_mean];
+f_xyz_ib_b_x_w_xyz_ib_b = cross(f_xyz_ib_b,w_xyz_ib_b);
+A                       = [f_xyz_ib_b,w_xyz_ib_b,f_xyz_ib_b_x_w_xyz_ib_b];
+
+g_task1_b               = [0;0;g_ib_b];
+w_ie_n_task1_b          = w_e * [cosd(latitude_deg); 0 ;-sind(latitude_deg)];
+g_task1_b_x_w_ie_n      = cross(-g_task1_b,w_ie_n_task1_b);
+B                       = [-g_task1_b, w_ie_n_task1_b, g_task1_b_x_w_ie_n];
+C_n_b_task1_b           = A/B;    %A * inv(B);
+I_check_task1_b         = C_n_b_task1_b*C_n_b_task1_b';
+C_n_b_task1_b_R         = C_n_b_task1_b*((C_n_b_task1_b'*C_n_b_task1_b)^(-1/2));
+I_check                 = C_n_b_task1_b_R * C_n_b_task1_b_R';
+ICO                     = C_n_b_task1_b_R;%initial_integration_constant_for_the_orientation
+c_b_n_dcm_0 = ICO';
+%% Task 2
+%a) Update the attitude, velocity and position of your vehicle frame in the target coordinate system for each IMU epoch from the kinematic dataset. Estimate the final position, velocity and orientation (Euler angles).
+%C_n_b: down n, up b
+C_n_b     = ICO;
+%C_n_b
+R_e       = 6378000;
+R_n       = 6378000;
+h         = 70;
+move_size = size(imudata.moving);
+move_z    = move_size(1);
+
+timestamp_moving = [];
+f_b_x_moving     = [];
+f_b_y_moving     = [];
+f_b_z_moving     = [];
+w_b_x_moving     = [];
+w_b_y_moving     = [];
+w_b_z_moving     = [];
+for k = 1:move_z
+    timestamp_moving(k,:) = imudata.static(k,1);
+    f_b_x_moving(k,:)     = imudata.moving(k,5); %#ok<*SAGROW>
+    f_b_y_moving(k,:)     = imudata.moving(k,6);
+    f_b_z_moving(k,:)     = imudata.moving(k,7);
+    w_b_x_moving(k,:)     = imudata.moving(k,2);
+    w_b_y_moving(k,:)     = imudata.moving(k,3);
+    w_b_z_moving(k,:)     = imudata.moving(k,4);
+end
+f_b_x_mean    = mean(f_b_x_moving(:));
+f_b_y_mean    = mean(f_b_y_moving(:));
+f_b_z_mean    = mean(f_b_z_moving(:));
+w_b_x_mean    = mean(w_b_x_moving(:));
+w_b_y_mean    = mean(w_b_y_moving(:));
+w_b_z_mean    = mean(w_b_z_moving(:));
+
+f_ib_b_moving = [f_b_x_moving';f_b_y_moving';f_b_z_moving'];
+
+v_e           = zeros(1,move_z);
+v_n           = zeros(1,move_z);
+v_d           = zeros(1,move_z);
+x             = zeros(3,move_z);
+v             = [v_n;v_e;v_d];
+v_ableitung   = zeros(3,move_z);
+g_n           = g_task1_b;
+delta_t       = timestamp_moving(2)-timestamp_moving(1);
+
+ for i = 2:move_z
+    w_en_n(:,i)      = [v_e(i)/(R_e+h); -v_n(i)/(R_n+h); -v_e(i) * tan(latitude)/(R_e+h)];
+    w_nb_b(:,i)      = [w_b_x_moving(i);w_b_y_moving(i);w_b_z_moving(i)] - C_n_b * (w_en_n(:,i) + w_ie_n_task_a);
+    delta_t(i)       = timestamp_moving(i)-timestamp_moving(i-1);
+    delta_task2(:,i) = w_nb_b(:,i) * (delta_t(i) );
+    delta_x          = [0 -delta_task2(3,i) delta_task2(2,i); 
+                        delta_task2(3,i) 0 -delta_task2(1,i);
+                       -delta_task2(2,i) delta_task2(1,i) 0];
+    delta_ska(i)     = norm(delta_task2(:,i)); 
+    C_b_n            = C_n_b';
+    C_b_n_new_vor    = C_b_n*(eye(3)+sin(delta_ska(i))/delta_ska(i)*delta_x+((1-cos(delta_ska(i)))/(delta_ska(i)^2))*delta_x^2);
+    C_b_n_new        = C_b_n_new_vor*((C_b_n_new_vor'*C_b_n_new_vor)^(-1/2));
+    C_n_b            = C_b_n_new';
+    roll_task2(i)     = atan2d(C_b_n_new(3,2),C_b_n_new(3,3));
+    pitch_task2(i)   = asind(-C_b_n_new(3,1));
+    yaw_task2(i)     = atan2d(C_b_n_new(2,1),C_b_n_new(1,1));  
+    v_ableitung(:,i) = C_b_n_new * f_ib_b_moving(:,i) - cross((2 * w_ie_n_task1_b + w_en_n(:,i)),v(:,i)) + g_n;
+    v(:,i)           = v(:,i-1) + (v_ableitung(:,i) + v_ableitung(:,i-1)) * 0.5 * delta_t(i);
+    v_e(i)           = v(2,i);
+    v_n(i)           = v(1,i);
+    v_d(i)           = v(3,i);
+    x(:,i)           = x(:,i-1) + 0.5*(v(:,i)+v(:,i-1)) * delta_t(i);
+    x_n(i)           = x(1,i);
+    x_e(i)           = x(2,i);
+    x_d(i)           = x(3,i);
+ end
+C_n_b_task4_R_anti   = ICO';
+roll_task2(1)         = atan2d(C_n_b_task4_R_anti(3,2),C_n_b_task4_R_anti(3,3));
+pitch_task2(1)       = asind(-C_n_b_task4_R_anti(3,1));
+yaw_task2(1)         = atan2d(C_n_b_task4_R_anti(2,1),C_n_b_task4_R_anti(1,1)); 
+figure(1)
+subplot(3,1,1)
+plot(timestamp_moving,v_n)
+xlabel('time [s]');
+ylabel('v_n [m/s]');
+title('Velocity update via propagration of the DCM')
+subplot(3,1,2)
+plot(timestamp_moving,v_e)
+xlabel('time [s]');
+ylabel('v_e [m/s]');
+subplot(3,1,3)
+plot(timestamp_moving,v_d)
+xlabel('time [s]');
+ylabel('v_d [m/s]');
+
+figure(2)
+subplot(3,1,1)
+plot(timestamp_moving,roll_task2)
+xlabel('time [s]');
+ylabel('roll [deg]');
+title('Attitude update via propagration of DCM')
+subplot(3,1,2)
+plot(timestamp_moving,pitch_task2)
+xlabel('time [s]');
+ylabel('pitch [deg]');
+subplot(3,1,3)
+plot(timestamp_moving,yaw_task2)
+xlabel('time [s]');
+ylabel('yaw [deg]');
+
+figure(3)
+plot(x_e, x_n);
+xlabel('E position [m]');
+ylabel('N position [m]');
+title('The trajectory of the vehicle on the tangential plane')
+%% Task3 
+[l,w] = size(imudata.moving);
+f_z_i = 9.82;
+g     = 9.82;
+f_x_b = imudata.moving(:,5);
+f_z_b = imudata.moving(:,7);
+%acceleration bias 
+ba     = 1.5 * 10^(-3) * g;
+%gyroscope bias 
+bg     = 0.75 * pi/180/360;
+
+error_f_x_b = ba;
+error_f_z_b = ba;
+error_omega = bg;
+
+for i = 1:l
+    delta_t = imudata.moving(i,1)-imudata.moving(1,1);
+    time_task3(i) = imudata.moving(i,1)-imudata.moving(1,1);
+    %acc bias
+     acc_error_v(i) = error_f_x_b * delta_t; %#ok<*SAGROW>
+     acc_error_x(i) = 0.5 * error_f_x_b *delta_t^2;
+    %gyro bias
+     error_theta = error_omega * delta_t;
+     gyro_error_v(i) = error_theta * error_f_z_b *delta_t;
+     gyro_error_x(i) = 0.5 * error_theta * delta_t^2 * error_f_z_b + 1/6 * error_omega* f_z_i * delta_t^3;
+     
+     gesamt_v(i) = acc_error_v(i) + gyro_error_v(i);
+     gesamt_x(i) = acc_error_x(i) +  gyro_error_x(i);
+end
+figure(4)
+plot(time_task3, gesamt_v)
+xlabel('time [s]');
+ylabel('error_v [m/s]');
+title('error_v')
+
+figure(5)
+plot(time_task3, gesamt_x)
+xlabel('time [s]');
+ylabel('error_x [m]');
+title('error_x')
+%% Task4
+j = 1;
+for k =1:move_z/10
+    j = k +10;
+    timestamp_moving_task4(k,:) = imudata.static(j,1);
+    f_b_x_moving_task4(k,:)     = imudata.moving(j,5); %#ok<*SAGROW>
+    f_b_y_moving_task4(k,:)     = imudata.moving(j,6);
+    f_b_z_moving_task4(k,:)     = imudata.moving(j,7);
+    w_b_x_moving_task4(k,:)     = imudata.moving(j,2);
+    w_b_y_moving_task4(k,:)     = imudata.moving(j,3);
+    w_b_z_moving_task4(k,:)     = imudata.moving(j,4);
+    j = k +10;
+end
+move_size_task4 = size( timestamp_moving_task4);
+move_z_task4    = move_size_task4(1);
+f_ib_b_moving_task4 = [f_b_x_moving_task4,f_b_y_moving_task4,f_b_z_moving_task4]';
+C_n_b_task4         = ICO;
+f_ib_b_moving       = [f_b_x_moving';f_b_y_moving';f_b_z_moving'];
+
+v_e_task4           = zeros(1,move_z_task4);
+v_n_task4           = zeros(1,move_z_task4);
+v_d_task4           = zeros(1,move_z_task4);
+x_task4             = zeros(3,move_z_task4);
+v_task4             = [v_n_task4;v_e_task4;v_d_task4];
+v_ableitung_task4   = zeros(3,move_z_task4);
+g_n_task4           = g_task1_b;
+delta_t_task4       = (timestamp_moving(2)-timestamp_moving(1))*10;
+ k                  = 200/20;
+ f                  = 2;
+ for i = 2:k:move_z-k-1
+        w_en_n_task4(:,f)      = [v_e_task4(f)/(R_e+h); -v_n_task4(f)/(R_n+h); -v_e_task4(f) * tan(latitude)/(R_e+h)];
+        w_nb_b_task4(:,f)      = [w_b_x_moving(i);w_b_y_moving(i);w_b_z_moving(i)] - C_n_b_task4 * (w_en_n_task4(:,f) + w_ie_n_task_a);
+        time(f)                = timestamp_moving(i);
+        delta_task4(:,f)       = w_nb_b_task4(:,f) * (delta_t_task4);
+        delta_x_task4          = [0 -delta_task4(3,f) delta_task4(2,f); 
+                                  delta_task4(3,f) 0 -delta_task4(1,f);
+                                 -delta_task4(2,f) delta_task4(1,f) 0];
+        delta_ska_task4(f)     = norm(delta_task4(:,f)); 
+        C_b_n_task4            = C_n_b_task4';
+        C_b_n_new_vor_task4    = C_b_n_task4*(eye(3)+sin(delta_ska_task4(f))/delta_ska_task4(f)*delta_x_task4+((1-cos(delta_ska_task4(f)))/(delta_ska_task4(f)^2))*delta_x_task4^2);
+        C_b_n_new_task4        = C_b_n_new_vor_task4*((C_b_n_new_vor_task4'*C_b_n_new_vor_task4)^(-1/2));
+        C_n_b_task4            = C_b_n_new_task4';
+        fai_task4(f)           = atan2d(C_b_n_new_task4(3,2),C_b_n_new_task4(3,3));
+        theta_task4(f)         = asind(-C_b_n_new_task4(3,1));
+        psi_task4(f)           = atan2d(C_b_n_new_task4(2,1),C_b_n_new_task4(1,1));  
+        v_ableitung_task4(:,f) = C_b_n_new_task4 * f_ib_b_moving(:,i) - cross((2 * w_ie_n_task1_b + w_en_n_task4(:,f)),v_task4(:,f)) + g_n_task4;
+        v_task4(:,f)           = v_task4(:,f-1) + (v_ableitung_task4(:,f) + v_ableitung_task4(:,f-1)) * 0.5 * delta_t_task4;
+        v_e_task4(f)           = v_task4(2,f);
+        v_n_task4(f)           = v_task4(1,f);
+        v_d_task4(f)           = v_task4(3,f);
+        x_task4(:,f)           = x_task4(:,f-1) + 0.5*(v_task4(:,f)+v_task4(:,f-1)) * delta_t_task4;
+        x_n_task4(f)           = x_task4(1,f);
+        x_e_task4(f)           = x_task4(2,f);
+        x_d_task4(f)           = x_task4(3,f);
+        f                      = f+1;
+ end
+C_n_b_task4_R_anti   = ICO';
+fai_task4(1)         = atan2d(C_n_b_task4_R_anti(3,2),C_n_b_task4_R_anti(3,3));
+theta_task4(1)       = asind(-C_n_b_task4_R_anti(3,1));
+psi_task4(1)         = atan2d(C_n_b_task4_R_anti(2,1),C_n_b_task4_R_anti(1,1)); 
+C_n_b_task4_R_anti   = ICO';
+fai_task4(1)         = atan2d(C_n_b_task4_R_anti(3,2),C_n_b_task4_R_anti(3,3));
+theta_task4(1)       = asind(-C_n_b_task4_R_anti(3,1));
+psi_task4(1)         = atan2d(C_n_b_task4_R_anti(2,1),C_n_b_task4_R_anti(1,1)); 
+
+figure(6)
+subplot(3,1,1)
+plot(time,v_n_task4)
+xlabel('time [s]');
+ylabel('v_n [m/s]');
+title('Velocity update via propagration of the DCM')
+subplot(3,1,2)
+plot(time,v_e_task4)
+xlabel('time [s]');
+ylabel('v_e [m/s]');
+subplot(3,1,3)
+plot(time,v_d_task4)
+xlabel('time [s]');
+ylabel('v_d [m/s]');
+
+figure(7)
+subplot(3,1,1)
+plot(time,fai_task4)
+xlabel('time [s]');
+ylabel('roll [deg]');
+title('Attitude update via propagration of DCM')
+subplot(3,1,2)
+plot(time,theta_task4)
+xlabel('time [s]');
+ylabel('pitch [deg]');
+subplot(3,1,3)
+plot(time,psi_task4)
+xlabel('time [s]');
+ylabel('yaw [deg]');
+
+figure(8)
+plot(x_e_task4, x_n_task4);
+xlabel('E position [m]');
+ylabel('N position [m]');
+title('The trajectory of the vehicle on the tangential plane')
+%% Task 2 roofoot
+r = 1;
+for q = 2:move_z
+    c(q) = yaw_task2(q)-yaw_task2(q-1);
+    r(q) = r(q-1)+1;
+end
+figure(9)
+plot(timestamp_moving,c,'o')
+ylim([-1,1])
+o = 2;
+b = 1;
+ for w = 1:10242
+     if abs(c(w))<0.003
+         yaw_ableitung(o) = c(w);
+         time_yaw_ab(o) = timestamp_moving(w);
+         b(o) = b(o-1)+1;
+         o=o+1;
+
+     end
+ end
+
+figure(9)
+plot(time_yaw_ab,yaw_ableitung,'x')
+ylim([-0.005,0.005])
+    figure(9)
+    plot(time_yaw_ab,b,'*')
+roll_data_index_1 = find(timestamp_moving<2.32,10242);
+roll_data_1 = roll_task2(roll_data_index_1);
+
+roll_data_index_2 = find(timestamp_moving>11.9 & timestamp_moving<12.33,10242);
+roll_data_2 = roll_task2(roll_data_index_2);
+
+roll_data_index_3 = find(timestamp_moving>21.91 & timestamp_moving<22.32,10242);
+roll_data_3 = roll_task2(roll_data_index_3);
+
+roll_data_index_4 = find(timestamp_moving>31.93 & timestamp_moving<32.33,10242);
+roll_data_4 = roll_task2(roll_data_index_4);
+
+roll_data_index_5 = find(timestamp_moving>41.85 & timestamp_moving<42.33,10242);
+roll_data_5 = roll_task2(roll_data_index_5);
+
+roll_1 = mean(roll_data_1);
+roll_2 = mean(roll_data_2);
+roll_3 = mean(roll_data_3);
+roll_4 = mean(roll_data_4);
+roll_5 = mean(roll_data_5);
+roll_angle = [roll_1,roll_2,roll_3,roll_4,roll_5];
+%roofoot 1
+roll_angle_1_deg = mean(roll_angle);
+
+
+
+%roofoot 2
+roll2_data_index_1 = find(timestamp_moving>6.565 & timestamp_moving<7.39,10242);
+roll2_data_1 = roll_task2(roll2_data_index_1);
+
+roll2_data_index_1 = find(timestamp_moving>16.57 & timestamp_moving<17.41,10242);
+roll2_data_2 = roll_task2(roll2_data_index_1);
+
+roll2_data_index_3 = find(timestamp_moving>26.57 & timestamp_moving<27.33,10242);
+roll2_data_3 = roll_task2(roll2_data_index_3);
+
+roll2_data_index_4 = find(timestamp_moving>36.57 & timestamp_moving<37.35,10242);
+roll2_data_4 = roll_task2(roll2_data_index_4);
+
+roll2_data_index_5 = find(timestamp_moving>46.56 & timestamp_moving<47.41,10242);
+roll2_data_5 = roll_task2(roll2_data_index_5);
+
+roll2_1 = mean(roll2_data_1);
+roll2_2 = mean(roll2_data_2);
+roll2_3 = mean(roll2_data_3);
+roll2_4 = mean(roll2_data_4);
+roll2_5 = mean(roll2_data_5);
+roll2_angle = [roll2_1,roll2_2,roll2_3,roll2_4,roll2_5];
+roll_angle_2_deg = mean(roll2_angle);
+%% task
+figure(10)
+scatter3(x_n,x_e,x_d)
+
