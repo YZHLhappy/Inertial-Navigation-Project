@@ -1,0 +1,87 @@
+% Part B: Initial Aligment and orientation representation
+%Yang,Zhonglong   2020.18.Mai
+clear all
+load('imubsp.mat')
+format long g
+%Find initial orientation for attitude computation
+s = size(imudata);
+z = s(1);
+%import the data (timestamp,fx,fy,fz,wx,wy,wz)
+timestamp = [];
+f_b_x = []; f_b_y = []; f_b_z = [];
+w_b_x = []; w_b_y = []; w_b_z = [];
+for k = 1:z
+    timestamp(k,:) = imudata(k,1);
+    f_b_x(k,:) = imudata(k,5); f_b_y(k,:) = imudata(k,6); f_b_z(k,:) = imudata(k,7);
+    w_b_x(k,:) = imudata(k,2); w_b_y(k,:) = imudata(k,3); w_b_z(k,:) = imudata(k,4);
+end
+f_b_x_mean = mean(f_b_x(:)); f_b_y_mean = mean(f_b_y(:)); f_b_z_mean = mean(f_b_z(:));
+w_b_x_mean = mean(w_b_x(:)); w_b_y_mean = mean(w_b_y(:)); w_b_z_mean = mean(w_b_z(:)); 
+w_xyz = [w_b_x_mean;w_b_y_mean;w_b_z_mean];
+%g
+acc = [f_b_x_mean;f_b_y_mean;f_b_z_mean];
+g = sqrt(acc(1)^2+acc(2)^2+acc(3)^2);
+
+%Task4: Direct calculation of the direction cosine matrix
+f_xyz_ib_b = [f_b_x_mean; f_b_y_mean; f_b_z_mean];
+w_xyz_ib_b = [w_b_x_mean;w_b_y_mean;w_b_z_mean];
+f_xyz_ib_b_x_w_xyz_ib_b = cross(f_xyz_ib_b,w_xyz_ib_b);
+A = [f_xyz_ib_b,w_xyz_ib_b,f_xyz_ib_b_x_w_xyz_ib_b];
+
+w_e_earth = 7.298823*10^(-5);
+phi = 52.385828/180*pi;
+
+g_task4 = [0;0;g];
+w_ie_n = w_e_earth * [cos(phi);0;-sin(phi)];
+g_task4_x_w_ie_n = cross(-g_task4,w_ie_n);
+B = [-g_task4,w_ie_n,g_task4_x_w_ie_n];
+C_n_b_task4 = A/B;    %A * inv(B);
+I_check_task4 = C_n_b_task4*C_n_b_task4';
+C_n_b_task4_R= C_n_b_task4*((C_n_b_task4'*C_n_b_task4)^(-1/2));
+
+I_check = C_n_b_task4_R * C_n_b_task4_R';
+
+%Task 5: Attitude Update 
+C_n_b =C_n_b_task4_R;
+w_en_n = [0;0;0]; 
+for i = 2:z
+        w_nb_b(:,i) = [w_b_x(i);w_b_y(i);w_b_z(i)] - C_n_b * (w_en_n + w_ie_n);
+        delta_t(i) = timestamp(i)-timestamp(i-1);
+        delta_task5(:,i) = w_nb_b(:,i) * (delta_t(i) );
+        delta_x = [0 -delta_task5(3,i) delta_task5(2,i); 
+                   delta_task5(3,i) 0 -delta_task5(1,i);
+                   -delta_task5(2,i) delta_task5(1,i) 0];
+        delta_ska(i) = norm(delta_task5(:,i));
+        C_b_n = C_n_b';
+        C_b_n_new = C_b_n*(eye(3)+sin(delta_ska(i))/delta_ska(i)*delta_x+((1-cos(delta_ska(i)))/(delta_ska(i)^2))*delta_x^2);
+        C_n_b = C_b_n_new';
+        fai_task5(i) = atan2d(C_b_n_new(3,2),C_b_n_new(3,3));
+        theta_task5(i) = asind(-C_b_n_new(3,1));
+        psi_task5(i) = atan2d(C_b_n_new(2,1),C_b_n_new(1,1));  
+end
+  C_n_b_task4_R_anti = C_n_b_task4_R';
+  fai_task5(1) = atan2d(C_n_b_task4_R_anti(3,2),C_n_b_task4_R_anti(3,3));
+  theta_task5(1) = asind(-C_n_b_task4_R_anti(3,1));
+  psi_task5(1) = atan2d(C_n_b_task4_R_anti(2,1),C_n_b_task4_R_anti(1,1)); 
+
+for i = 1:z
+    timestamp_new(i) = timestamp(i)-timestamp(1);
+end
+
+subplot(3,1,1);
+plot(timestamp_new,fai_task5,'r','linewidth',1.5); grid on;
+ylabel('roll [deg]');
+xlim([0,600])
+title('Solution of Attitude Update');
+
+subplot(3,1,2);
+plot(timestamp_new,theta_task5,'g','linewidth',1.5); grid on;
+ylabel('pitch [deg]');
+xlim([0,600])
+
+subplot(3,1,3);
+plot(timestamp_new,psi_task5,'b','linewidth',1.5); grid on;
+xlim([0,600])
+ylabel('yaw [deg]');
+xlabel('time [s]');
+
