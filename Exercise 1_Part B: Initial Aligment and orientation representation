@@ -1,5 +1,5 @@
 % Part B: Initial Aligment and orientation representation
-%Yang,Zhonglong   2020.18.Mai
+% Yang   2020.18.Mai
 clear all
 load('imubsp.mat')
 format long g
