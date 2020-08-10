@@ -1,0 +1,94 @@
+clear all
+load('ex02_task3_mtra#.mat')
+
+s = size(imudata);
+z = s(1);
+timestamp = [];
+f_b_x = []; f_b_y = []; f_b_z = [];
+w_b_x = []; w_b_y = []; w_b_z = [];
+for k = 1:z
+    timestamp(k,:) = imudata(k,1);
+    f_b_x(k,:) = imudata(k,5); f_b_y(k,:) = imudata(k,6); f_b_z(k,:) = imudata(k,7);
+    w_b_x(k,:) = imudata(k,2); w_b_y(k,:) = imudata(k,3); w_b_z(k,:) = imudata(k,4);
+end
+figure(1)
+plot(f_b_x)
+title("fx imudata")
+figure(2)
+plot(f_b_y)
+title("fy imudata")
+figure(3)
+plot(f_b_z)
+title("fz imudata")
+figure(4)
+plot(w_b_x)
+title("omx imudata")
+figure(5)
+plot(w_b_y)
+title("omy imudata")
+figure(6)
+plot(w_b_z)
+title("omz imudata")
+
+%%  Estimate the Allan-deviation of all sensor axes (acc & gyro)from the static dataset (frequency data). Plot the results
+%acc
+v = 6;
+tau_0 = 1/10;
+[tau_fx,theta_sqrt_fx,theta_qua_fx] = Allan(v,tau_0,f_b_x');
+[tau_fy,theta_sqrt_fy,theta_qua_fy] = Allan(v,tau_0,f_b_y');
+[tau_fz,theta_sqrt_fz,theta_qua_fz] = Allan(v,tau_0,f_b_z');
+%gyro
+[tau_wx,theta_sqrt_wx,theta_qua_wx] = Allan(v,tau_0,w_b_x');
+[tau_wy,theta_sqrt_wy,theta_qua_wy] = Allan(v,tau_0,w_b_y');
+[tau_wz,theta_sqrt_wz,theta_qua_wz] = Allan(v,tau_0,w_b_z');
+%plot
+figure(7)
+loglog(tau_fx,theta_sqrt_fx)
+title("fx Allan-deviation")
+figure(8)
+loglog(tau_fy,theta_sqrt_fy)
+title("fy Allan-deviation")
+figure(9)
+loglog(tau_fz,theta_sqrt_fz)
+title("fz Allan-deviation")
+
+figure(10)
+loglog(tau_wx,theta_sqrt_wx)
+title("omx Allan-deviation")
+figure(11)
+loglog(tau_wy,theta_sqrt_wy)
+title("omy Allan-deviation")
+figure(12)
+loglog(tau_wz,theta_sqrt_wz)
+title("omz Allan-deviation")
+%%  frequency random walk h_-2,  frequency flicker:h_-1, frequency white noise = h_0
+h_2_fz = 6/(4*pi^2)*0.0004343^2/500;
+h_1_fz = 0.0003079^(2)/(2*log(2));
+h_0_fz = 2*1*(0.00201^2);
+
+h_2_omz = 6/(4*pi^2)*0.00001397^2/500;
+h_1_omz = 0.00002077^(2)/(2*log(2));
+h_0_omz = 2*1*(0.0002131^2);
+
+
+%% Task 4: Power spectral density 
+z = f_b_z;
+fs = 10;
+omz = w_b_z;
+[freq_fz, psdx_fz] = aux_calcPSD(z, fs);
+[freq_omz, psdx_omz] = aux_calcPSD(omz, fs);
+
+S_y_fz = h_2_fz * freq_fz.^(-2) + h_1_fz * freq_fz.^(-1) + h_0_fz * freq_fz.^0;
+S_y_omz = h_2_omz * freq_omz.^(-2) + h_1_omz * freq_omz.^(-1) + h_0_omz * freq_omz.^0;
+figure(13)
+loglog(freq_fz, psdx_fz)
+hold on
+loglog(freq_fz,S_y_fz)
+hold on
+title("fz")
+figure(14)
+loglog(freq_omz,psdx_omz)
+hold on
+loglog(freq_omz,S_y_omz)
+hold on
+title("omz")
