@@ -1,0 +1,27 @@
+function [tau,theta_sqrt,theta_qua] = Allan(v,tau_0,imudata_xyz)
+%imudata_xyz :single f_b_x...f_b_z, w_b_x...w_b_z
+%imudata matrix Nx1
+[~,N] = size(imudata_xyz);
+N_max = fix(N/v);
+
+for k = 1:N_max
+    Intervals(k) = fix(N/k);  %#ok<*AGROW>
+    tau_xyz(k) = k * tau_0;
+    j = 1;
+    y_mean = [];
+    for i = 1 : k : Intervals(k) * k  
+        A = imudata_xyz(i:i+k-1);
+        y_mean(j) = mean(A);
+        j = j+1;
+    end
+    y_mean_diff = diff(y_mean).^2;
+    sum_diff = sum(y_mean_diff);
+    M = Intervals(k);
+    theta_a(k) = sum_diff/(2*(M-1));
+    theta_sqrt_xyz(k) = sqrt(theta_a(k));
+end 
+tau = tau_xyz;
+theta_sqrt = theta_sqrt_xyz;
+theta_qua = theta_a;
+end
+
