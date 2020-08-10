@@ -1,0 +1,20 @@
+function [freq, psdx] = aux_calcPSD(x, fs)
+%https://de.mathworks.com/help/signal/ug/power-spectral-density-estimates-using-fft.html
+%
+% INPUT: 
+%   o x - time series
+%   o fs - sensor frequency
+%
+% OUPUT:
+%   o freq - sampled frequencies
+%   o psdx - power spectral density
+
+N = length(x);
+xdft = fft(x);
+xdft = xdft(1:N/2+1);
+psdx = (1/(fs*N)) * abs(xdft).^2;
+psdx(2:end-1) = 2*psdx(2:end-1) ;
+
+freq = 0:fs/length(xdft):fs;
+freq=freq(1:length(psdx));
+end
